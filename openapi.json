@@ -1,0 +1,181 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "S3 Files by Date API",
+    "version": "1.0.0",
+    "description": "Download S3 object keys and LastModified within a date range as CSV (`fileName`, `uploadedAt`). Optional `folderName` limits listing to a key prefix. Date-only `endDate` (YYYY-MM-DD) is treated as end of that calendar day in UTC. Maximum range is configurable (default 365 days) via `MAX_RANGE_DAYS`."
+  },
+  "servers": [
+    { "url": "/", "description": "Current host" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "operationId": "getHealth",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "status": { "type": "string", "example": "ok" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files": {
+      "get": {
+        "summary": "Download files in date range as CSV",
+        "operationId": "getFiles",
+        "tags": ["Files"],
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "description": "Range start (ISO-8601). Date-only YYYY-MM-DD is start of that day UTC.",
+            "schema": { "type": "string", "example": "2026-04-01" }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": true,
+            "description": "Range end. If no time component (no `T`), end of that calendar day UTC (23:59:59.999Z).",
+            "schema": { "type": "string", "example": "2026-04-30" }
+          },
+          {
+            "name": "folderName",
+            "in": "query",
+            "required": false,
+            "description": "S3 \"folder\" (key prefix). Omit to list the whole bucket (subject to date filter).",
+            "schema": { "type": "string", "example": "invoices/april" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "UTF-8 CSV attachment (BOM) with columns `fileName` and `uploadedAt`",
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string", "format": "binary" },
+                "example": "fileName,uploadedAt\r\nmy-bucket/key.txt,2026-04-21T11:42:53.000Z"
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (validation, or range too large)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "500": {
+            "description": "S3 or server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/preview": {
+      "get": {
+        "summary": "Preview files in date range as JSON",
+        "operationId": "getFilesPreview",
+        "tags": ["Files"],
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "description": "Range start (ISO-8601). Date-only YYYY-MM-DD is start of that day UTC.",
+            "schema": { "type": "string", "example": "2026-04-01" }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": true,
+            "description": "Range end. If no time component (no `T`), end of that calendar day UTC (23:59:59.999Z).",
+            "schema": { "type": "string", "example": "2026-04-30" }
+          },
+          {
+            "name": "folderName",
+            "in": "query",
+            "required": false,
+            "description": "S3 \"folder\" (key prefix). Omit to list the whole bucket (subject to date filter).",
+            "schema": { "type": "string", "example": "invoices/april" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON preview of matched files and counters",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FilesPreviewResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (validation, or range too large)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "500": {
+            "description": "S3 or server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FileItem": {
+        "type": "object",
+        "properties": {
+          "fileName": { "type": "string", "description": "S3 object key" },
+          "uploadedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "FilesPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "bucket": { "type": "string" },
+          "folderPrefix": { "type": "string", "nullable": true },
+          "dateRange": {
+            "type": "object",
+            "properties": {
+              "startDate": { "type": "string" },
+              "endDate": { "type": "string" }
+            }
+          },
+          "s3ObjectsListed": { "type": "integer", "description": "Total keys returned from S3 list (before date filter)" },
+          "count": { "type": "integer", "description": "Keys matching date range" },
+          "files": { "type": "array", "items": { "$ref": "#/components/schemas/FileItem" } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}
