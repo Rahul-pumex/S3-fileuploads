@@ -71,25 +71,13 @@ const escapeCsvField = (value) => {
   return s;
 };
 
-const formatDateToIst = (value) => {
+const formatDateToUtcReadable = (value) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-
-  const parts = new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-
-  const get = (type) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("day")}-${get("month")}-${get("year")} ${get("hour")}:${get("minute")}:${get("second")} IST`;
+  const iso = date.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
 };
 
 const buildFilesCsv = (rows) => {
@@ -97,7 +85,7 @@ const buildFilesCsv = (rows) => {
   const lines = [
     header,
     ...rows.map((r) => {
-      const uploaded = formatDateToIst(r.uploadedAt);
+      const uploaded = formatDateToUtcReadable(r.uploadedAt);
       return `${escapeCsvField(r.fileName)},${escapeCsvField(uploaded)}`;
     }),
   ];
@@ -267,11 +255,19 @@ app.get("/files/preview", async (req, res) => {
     }
 
     const payload = result.data;
+    const previewPayload = {
+      ...payload,
+      files: payload.files.map((f) => ({
+        fileName: f.fileName,
+        uploadedAt: formatDateToUtcReadable(f.uploadedAt),
+      })),
+    };
+
     console.log(
-      `[GET /files/preview] ok bucket=${payload.bucket} folder=${payload.folderPrefix ?? "(entire bucket)"} s3ObjectsListed=${payload.s3ObjectsListed} matchedInDateRange=${payload.count} start=${payload.dateRange.startDate} end=${payload.dateRange.endDate}`
+      `[GET /files/preview] ok bucket=${previewPayload.bucket} folder=${previewPayload.folderPrefix ?? "(entire bucket)"} s3ObjectsListed=${previewPayload.s3ObjectsListed} matchedInDateRange=${previewPayload.count} start=${previewPayload.dateRange.startDate} end=${previewPayload.dateRange.endDate}`
     );
 
-    return res.status(200).json(payload);
+    return res.status(200).json(previewPayload);
   } catch (error) {
     console.error("Error previewing files from S3:", error);
     return res.status(500).json({

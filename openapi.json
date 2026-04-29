@@ -157,7 +157,11 @@
         "type": "object",
         "properties": {
           "fileName": { "type": "string", "description": "S3 object key" },
-          "uploadedAt": { "type": "string", "format": "date-time" }
+          "uploadedAt": {
+            "type": "string",
+            "description": "Last modified time as UTC.",
+            "example": "2026-04-27 05:21:35 UTC"
+          }
         }
       },
       "FilesPreviewResponse": {
