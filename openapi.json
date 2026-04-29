@@ -75,6 +75,14 @@
               }
             }
           },
+          "404": {
+            "description": "No data found for selected filters",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
           "500": {
             "description": "S3 or server error",
             "content": {

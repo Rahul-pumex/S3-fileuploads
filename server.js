@@ -234,6 +234,17 @@ app.get("/files", async (req, res) => {
       `[GET /files] ok bucket=${payload.bucket} folder=${payload.folderPrefix ?? "(entire bucket)"} s3ObjectsListed=${payload.s3ObjectsListed} matchedInDateRange=${payload.count} start=${payload.dateRange.startDate} end=${payload.dateRange.endDate}`
     );
 
+    if (payload.count === 0) {
+      return res.status(404).json({
+        message: "No data available for the selected date range and folder.",
+        bucket: payload.bucket,
+        folderPrefix: payload.folderPrefix,
+        dateRange: payload.dateRange,
+        s3ObjectsListed: payload.s3ObjectsListed,
+        count: 0,
+      });
+    }
+
     const csvBody = `\uFEFF${buildFilesCsv(payload.files)}`;
     const fn = `s3-files-${safeFilenamePart(payload.bucket)}-${payload.dateRange.startDate.slice(0, 10)}_to_${payload.dateRange.endDate.slice(0, 10)}.csv`;
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
