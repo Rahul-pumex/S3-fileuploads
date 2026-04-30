@@ -3,7 +3,7 @@
   "info": {
     "title": "S3 Files by Date API",
     "version": "1.0.0",
-    "description": "Download S3 object keys and LastModified within a date range as CSV (`fileName`, `uploadedAt`). Optional `folderName` limits listing to a key prefix. Date-only `endDate` (YYYY-MM-DD) is treated as end of that calendar day in UTC. Maximum range is configurable (default 365 days) via `MAX_RANGE_DAYS`."
+    "description": "Download S3 object keys and LastModified within a date range as CSV, JSON, or Excel. Optional `folderName` limits listing to a key prefix. Date-only `endDate` (YYYY-MM-DD) is treated as end of that calendar day in UTC. Maximum range is configurable (default 365 days) via `MAX_RANGE_DAYS`. Excel format includes minute-based grouping with background colors for entries uploaded in the same minute."
   },
   "servers": [
     { "url": "/", "description": "Current host" }
@@ -133,6 +133,70 @@
           },
           "400": {
             "description": "Bad request (validation, or range too large)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "500": {
+            "description": "S3 or server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/files/excel": {
+      "get": {
+        "summary": "Download files in date range as Excel with minute-based grouping",
+        "operationId": "getFilesExcel",
+        "tags": ["Files"],
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "description": "Range start (ISO-8601). Date-only YYYY-MM-DD is start of that day UTC.",
+            "schema": { "type": "string", "example": "2026-04-01" }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": true,
+            "description": "Range end. If no time component (no `T`), end of that calendar day UTC (23:59:59.999Z).",
+            "schema": { "type": "string", "example": "2026-04-30" }
+          },
+          {
+            "name": "folderName",
+            "in": "query",
+            "required": false,
+            "description": "S3 \"folder\" (key prefix). Omit to list the whole bucket (subject to date filter).",
+            "schema": { "type": "string", "example": "invoices/april" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Excel attachment (.xlsx) with columns `fileName` and `uploadedAt`. Rows with multiple files in the same minute are highlighted with background colors.",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (validation, or range too large)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "No data found for selected filters",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Error" }

@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const swaggerUi = require("swagger-ui-express");
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
+const ExcelJS = require("exceljs");
 
 dotenv.config();
 
@@ -92,7 +93,82 @@ const buildFilesCsv = (rows) => {
   return lines.join("\r\n");
 };
 
+const groupFilesByMinute = (files) => {
+  const minuteGroups = {};
+  
+  files.forEach((file) => {
+    const date = new Date(file.uploadedAt);
+    const minuteKey = new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes()).toISOString();
+    
+    if (!minuteGroups[minuteKey]) {
+      minuteGroups[minuteKey] = [];
+    }
+    minuteGroups[minuteKey].push(file);
+  });
+  
+  return minuteGroups;
+};
+
+const buildFilesExcel = async (rows) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Files");
+  
+  // Add headers
+  worksheet.columns = [
+    { header: "fileName", key: "fileName", width: 50 },
+    { header: "uploadedAt", key: "uploadedAt", width: 30 },
+  ];
+  
+  // Style header row
+  const headerRow = worksheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF366092" },
+  };
+  headerRow.alignment = { horizontal: "center", vertical: "center" };
+  
+  // Group files by minute
+  const minuteGroups = groupFilesByMinute(rows);
+  const minuteKeys = Object.keys(minuteGroups).sort();
+  
+  // Color palette for grouped entries (light backgrounds)
+  const colors = ["FFF0E6E6", "FFE6F0E6", "FFE6E6F0", "FFFFF0E6", "FFF0F0E6"];
+  
+  let rowIndex = 2;
+  
+  minuteKeys.forEach((minuteKey, groupIndex) => {
+    const group = minuteGroups[minuteKey];
+    const hasMultipleEntries = group.length > 1;
+    const bgColor = hasMultipleEntries ? colors[groupIndex % colors.length] : null;
+    
+    group.forEach((file) => {
+      const row = worksheet.addRow({
+        fileName: file.fileName,
+        uploadedAt: formatDateToUtcReadable(file.uploadedAt),
+      });
+      
+      if (hasMultipleEntries && bgColor) {
+        row.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: bgColor },
+          };
+        });
+      }
+      
+      row.alignment = { vertical: "center" };
+      rowIndex++;
+    });
+  });
+  
+  return workbook;
+};
+
 const safeFilenamePart = (s) => String(s).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-|-$/g, "") || "file";
+
 
 const listAllObjects = async (bucketName, prefix) => {
   const allObjects = [];
@@ -272,6 +348,46 @@ app.get("/files/preview", async (req, res) => {
     console.error("Error previewing files from S3:", error);
     return res.status(500).json({
       message: "Failed to fetch files from S3. Check credentials, bucket name, and permissions.",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/files/excel", async (req, res) => {
+  try {
+    const result = await getFilteredFilesResult(req.query);
+    if (result.error) {
+      return res.status(result.error.status).json(result.error.body);
+    }
+    const payload = result.data;
+
+    console.log(
+      `[GET /files/excel] ok bucket=${payload.bucket} folder=${payload.folderPrefix ?? "(entire bucket)"} s3ObjectsListed=${payload.s3ObjectsListed} matchedInDateRange=${payload.count} start=${payload.dateRange.startDate} end=${payload.dateRange.endDate}`
+    );
+
+    if (payload.count === 0) {
+      return res.status(404).json({
+        message: "No data available for the selected date range and folder.",
+        bucket: payload.bucket,
+        folderPrefix: payload.folderPrefix,
+        dateRange: payload.dateRange,
+        s3ObjectsListed: payload.s3ObjectsListed,
+        count: 0,
+      });
+    }
+
+    const workbook = await buildFilesExcel(payload.files);
+    const fn = `s3-files-${safeFilenamePart(payload.bucket)}-${payload.dateRange.startDate.slice(0, 10)}_to_${payload.dateRange.endDate.slice(0, 10)}.xlsx`;
+    
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${fn}"`);
+    
+    await workbook.xlsx.write(res);
+    return res.end();
+  } catch (error) {
+    console.error("Error generating Excel file from S3:", error);
+    return res.status(500).json({
+      message: "Failed to generate Excel file. Check credentials, bucket name, and permissions.",
       error: error.message,
     });
   }
